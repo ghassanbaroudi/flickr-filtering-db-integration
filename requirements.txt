@@ -1,0 +1,17 @@
+# flickr-filtering pipeline dependencies
+# Install in your project venv:
+#   pip install -r requirements.txt
+#
+# PyTorch must be installed separately for your platform (CUDA / CPU):
+#   https://pytorch.org/get-started/locally/
+
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+requests>=2.31
+Pillow>=9.0
+tqdm>=4.65
+
+# OpenCLIP (default vision backend)
+torch>=2.0
+open-clip-torch>=2.24.0
