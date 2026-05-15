@@ -51,7 +51,7 @@ photos_out, clusters_out = clustering.vision_and_keywords(embedded)
 #   min_longitude, avg_longitude, max_longitude
 ```
 
-## Required DB schema additions (tell Nathanael)
+## Required DB schema additions
 
 ```sql
 -- machine_learning_photo table

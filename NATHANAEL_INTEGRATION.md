@@ -1,7 +1,7 @@
 # Integration requirements for `flico-nathanael`
 
 This document lists every change needed in `flico-nathanael` to support the
-`flickr-filtering` pipeline. Nothing here changes Ghass's code — all items below
+`flickr-filtering` pipeline. Nothing here changes my code — all items below
 are additions or fixes on your side.
 
 ---
@@ -113,7 +113,7 @@ def flickr_photo_to_clip_embed() -> pd.DataFrame:
 Returns photos that still need vision scoring.
 
 - `NULL` rows = never attempted → always included.
-- `'ERROR'` rows = download failed last time → **retried by default** (same behaviour as Ghass's
+- `'ERROR'` rows = download failed last time → **retried by default** (same behaviour as my
   existing `vision_cache.jsonl` pipeline).
 - Pass `skip_errors=True` to leave ERROR rows alone (useful if a URL is permanently broken).
 
