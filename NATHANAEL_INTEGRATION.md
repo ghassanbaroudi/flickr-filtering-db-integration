@@ -13,7 +13,7 @@ are additions or fixes on your side.
 ```sql
 ALTER TABLE machine_learning_photo
     ADD COLUMN clip_vect_224  VECTOR(512),      -- OpenCLIP ViT-B-32 L2-normalised embedding
-    ADD COLUMN vision_label   TEXT,             -- "YES" / "NO" / "ERROR"
+    ADD COLUMN is_building    BOOLEAN,          -- True = building, False = not a building, NULL = not yet scored (retry)
     ADD COLUMN p_building     DOUBLE PRECISION; -- softmax P(class-0 = building), range [0.0, 1.0]
 ```
 
@@ -25,7 +25,7 @@ ALTER TABLE machine_learning_photo
 | Column | Type | Reason |
 |---|---|---|
 | `clip_vect_224` | `VECTOR(512)` | ViT-B-32 outputs 512-dimensional embeddings. Named `_224` to reflect the 224×224 input resolution, consistent with your `sig_lip_vect_n` (`_n` = 320px) convention. |
-| `vision_label` | `TEXT` | Three possible values: `"YES"` (building), `"NO"` (not a building), `"ERROR"` (download failed — will be retried). |
+| `is_building` | `BOOLEAN` | `True` = building, `False` = not a building, `NULL` = download failed or not yet processed. NULL rows are always retried on the next run — no separate error state needed. |
 | `p_building` | `DOUBLE PRECISION` | Softmax probability for the building-positive class. Useful for ranking or threshold tuning later. |
 
 ---
@@ -36,7 +36,7 @@ Add the three new columns to `ml_photo_table`:
 
 ```python
 from pgvector.sqlalchemy import VECTOR
-from sqlalchemy import Float  # add Float to existing imports
+from sqlalchemy import Boolean, Float  # add Boolean, Float to existing imports
 
 ml_photo_table = Table(
     "machine_learning_photo",
@@ -44,7 +44,7 @@ ml_photo_table = Table(
     # ... existing columns unchanged ...
 
     Column("clip_vect_224", VECTOR(512)),   # ADD
-    Column("vision_label",  Text),          # ADD
+    Column("is_building",   Boolean),       # ADD
     Column("p_building",    Float),         # ADD
 
     # ... existing ForeignKeyConstraints unchanged ...
@@ -108,33 +108,25 @@ def flickr_photo_to_clip_embed() -> pd.DataFrame:
     return df.loc[:, ~df.columns.duplicated()]
 ```
 
-### 4b. `flickr_photo_to_vision_score(skip_errors=False)`
+### 4b. `flickr_photo_to_vision_score()`
 
-Returns photos that still need vision scoring.
-
-- `NULL` rows = never attempted → always included.
-- `'ERROR'` rows = download failed last time → **retried by default** (same behaviour as my
-  existing `vision_cache.jsonl` pipeline).
-- Pass `skip_errors=True` to leave ERROR rows alone (useful if a URL is permanently broken).
+Returns photos that still need vision scoring. `NULL` means either never attempted or the
+download failed last run — both cases are retried automatically. There is no separate error
+state: failed rows simply stay `NULL` and are picked up on the next run.
 
 ```python
-def flickr_photo_to_vision_score(skip_errors: bool = False) -> pd.DataFrame:
+def flickr_photo_to_vision_score() -> pd.DataFrame:
     """
-    Photos that need vision scoring (NULL = never scored, ERROR = failed last run).
+    Photos that need vision scoring.
+    NULL = never scored OR download failed last run (retried automatically).
     Only returns rows that already have a geo_cluster_id (DBSCAN must run first).
-    Pass skip_errors=True to leave permanently-failed rows untouched.
     """
-    if skip_errors:
-        condition = "MLP.vision_label IS NULL"
-    else:
-        condition = "(MLP.vision_label IS NULL OR MLP.vision_label = 'ERROR')"
-
-    query = text(f"""--sql
+    query = text("""--sql
         SELECT * FROM photo AS P
         JOIN machine_learning_photo AS MLP
         ON P.owner_nsid = MLP.owner_nsid AND P.id = MLP.id
         WHERE MLP.geo_cluster_id IS NOT NULL
-        AND {condition}
+        AND MLP.is_building IS NULL
     """)
     df = pd.read_sql_query(query, get_engine("trainer"))
     return df.loc[:, ~df.columns.duplicated()]
@@ -199,39 +191,34 @@ if not df_to_embed.empty:
     embedding.clip(df_to_embed, on_batch=_on_clip_batch)
 
 # ── Step 2: DBSCAN clustering ────────────────────────────────────────────────
-# Run once on all unprocessed rows. geo_cluster_id + cluster rows written at the end.
-# DBSCAN is fast (no network I/O) so no on_batch needed here.
+# Run once on all unprocessed rows. Fast — no network I/O.
+# Write clusters first (FK constraint: geo_cluster_id references geo_cluster.id).
 
 df_to_cluster = flickr_photo_to_dbscan()
 if not df_to_cluster.empty:
-    photos_clustered, clusters_df = clustering.vision_and_keywords(
-        df_to_cluster,
-        on_batch=None,   # vision scoring handled in step 3 below
-    )
-    # Write clusters first (FK constraint: geo_cluster_id references geo_cluster.id)
+    photos_clustered, clusters_df = clustering.cluster(df_to_cluster)
     save_clusters(clusters_df)
     update_ml_photo(
         photos_clustered[['owner_nsid', 'id', 'geo_cluster_id']],
         'geo_cluster_id',
     )
 
-# ── Step 3: Vision scoring ───────────────────────────────────────────────────
-# Re-run freely; ERROR rows are automatically retried (skip_errors=False).
-# Each batch is committed immediately via on_batch — safe to interrupt.
+# ── Step 3: Building labeling ─────────────────────────────────────────────────
+# Re-run freely; NULL rows (never scored or failed last run) are retried automatically.
+# Each successful batch is committed immediately via on_batch — safe to interrupt at any time.
+# Failed downloads are silently skipped and stay NULL in the DB for the next run.
 
 def _on_vision_batch(batch_df):
-    update_ml_photo(batch_df, 'vision_label')
+    update_ml_photo(batch_df, 'is_building')
     update_ml_photo(batch_df, 'p_building')
 
-df_to_score = flickr_photo_to_vision_score(skip_errors=False)
+df_to_score = flickr_photo_to_vision_score()
 if not df_to_score.empty:
-    clustering.vision_and_keywords(df_to_score, on_batch=_on_vision_batch)
+    clustering.label_buildings(df_to_score, on_batch=_on_vision_batch)
 ```
 
-> **Note:** Steps 2 and 3 both call `vision_and_keywords()` but for different purposes.
-> Step 2 uses it only for DBSCAN (pass the full unprocessed set, ignore vision output for now).
-> Step 3 uses it only for vision scoring (pass only unscored rows via `flickr_photo_to_vision_score`).
-> Alternatively, Ghass can split `vision_and_keywords` into two separate functions on request.
+> `cluster()` and `label_buildings()` are fully independent and can be called separately.
+> `vision_and_keywords()` is kept as a convenience wrapper that calls both in sequence.
 
 ---
 
@@ -243,5 +230,5 @@ if not df_to_score.empty:
 | `src/core/model.py` | Code addition | 3 new `Column(...)` entries in `ml_photo_table` |
 | `src/trainer/db.py` | Bug fix | Typo `_psql_insert_signore` → `_psql_insert_ignore` in `save_clusters` |
 | `src/trainer/db.py` | Code addition | New function `flickr_photo_to_clip_embed()` |
-| `src/trainer/db.py` | Code addition | New function `flickr_photo_to_vision_score(skip_errors)` |
+| `src/trainer/db.py` | Code addition | New function `flickr_photo_to_vision_score()` |
 | `src/trainer/db.py` | Code addition | New function `flickr_photo_to_dbscan()` |

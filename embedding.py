@@ -85,9 +85,10 @@ def clip(
 
     Returns
     -------
-    DataFrame identical to *df* plus two new columns:
+    DataFrame identical to *df* plus one new column:
       ``clip_vect_224`` — numpy float32 array of shape (512,), or None on failure.
-      ``clip_error``    — empty string on success, error description on failure.
+                          None rows are not passed to on_batch and stay NULL in the DB,
+                          so they are retried automatically on the next run.
 
     Notes for Nathanael's DB
     ------------------------
@@ -122,7 +123,6 @@ def clip(
     bs = max(1, int(batch_size))
 
     vectors: List[Optional[np.ndarray]] = [None] * n
-    errors: List[str] = [""] * n
 
     try:
         from tqdm import tqdm
@@ -134,44 +134,52 @@ def clip(
         chunk_urls = urls[start: start + bs]
         pil_images: List[Optional[object]] = []
         ok_flags: List[bool] = []
-        err_msgs: List[str] = []
 
         for url in chunk_urls:
             u = url.strip()
             if not u:
                 pil_images.append(None)
                 ok_flags.append(False)
-                err_msgs.append("missing url")
                 continue
-            img, err = fetch_with_deadline(
-                u,
-                timeout=timeout,
-                max_retries=max_retries,
-                base_backoff=2.0,
-                hard_timeout=hard_timeout,
-            )
-            pil_images.append(img)
-            ok_flags.append(img is not None)
-            err_msgs.append(err or "")
+            try:
+                img, err = fetch_with_deadline(
+                    u,
+                    timeout=timeout,
+                    max_retries=max_retries,
+                    base_backoff=2.0,
+                    hard_timeout=hard_timeout,
+                )
+                if img is None:
+                    raise RuntimeError(err or "download failed")
+                pil_images.append(img)
+                ok_flags.append(True)
+            except Exception:
+                pil_images.append(None)
+                ok_flags.append(False)
 
         good_images = [im for im, ok in zip(pil_images, ok_flags) if ok]
-        embeddings = runtime.embed_images(good_images) if good_images else []
+        try:
+            embeddings = runtime.embed_images(good_images) if good_images else []
+        except Exception as exc:
+            print(f"[embedding.clip] batch inference failed: {exc} — skipping batch.", flush=True)
+            embeddings = []
+            ok_flags = [False] * len(ok_flags)
 
         ei = 0
-        batch_indices: List[int] = []
-        for local_i, (ok, err) in enumerate(zip(ok_flags, err_msgs)):
+        successful_indices: List[int] = []
+        for local_i, ok in enumerate(ok_flags):
             global_i = start + local_i
-            batch_indices.append(global_i)
-            if ok:
+            if ok and ei < len(embeddings):
                 vectors[global_i] = embeddings[ei]
                 ei += 1
-            else:
-                errors[global_i] = err
+                successful_indices.append(global_i)
 
-        if on_batch is not None:
-            batch_slice = df.iloc[batch_indices].copy()
-            batch_slice["clip_vect_224"] = [vectors[i] for i in batch_indices]
-            batch_slice["clip_error"] = [errors[i] for i in batch_indices]
+        # Only pass successfully embedded rows to on_batch.
+        # Failed rows stay None in `vectors` — they remain NULL in the DB and are retried next run.
+        if on_batch is not None and successful_indices:
+            batch_slice = df.iloc[successful_indices].copy()
+            batch_slice["clip_vect_224"] = [vectors[i] for i in successful_indices]
+            batch_slice["clip_error"] = [""] * len(successful_indices)
             on_batch(batch_slice)
 
         if pbar is not None:
@@ -181,10 +189,9 @@ def clip(
         pbar.close()
 
     n_ok = sum(1 for v in vectors if v is not None)
-    n_err = n - n_ok
-    print(f"[embedding.clip] done: {n_ok:,} embedded, {n_err:,} failed.")
+    n_pending = n - n_ok
+    print(f"[embedding.clip] done: {n_ok:,} embedded, {n_pending:,} failed (will retry next run).")
 
     out = df.copy()
-    out["clip_vect_224"] = vectors
-    out["clip_error"] = errors
+    out["clip_vect_224"] = vectors  # None for failed rows — stays NULL in DB
     return out

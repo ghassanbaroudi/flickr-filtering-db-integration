@@ -9,7 +9,9 @@ the `flickr-commons-metadata` project alongside Nathanael's DB-backed pipeline.
 flickr-filtering/
 ├── embedding.py       ← public API: clip(df) → df
 ├── clustering.py      ← public API: filter(df) → df
-│                                    vision_and_keywords(df) → (photos_df, clusters_df)
+│                                    cluster(df) → (photos_df, clusters_df)
+│                                    label_buildings(df) → df
+│                                    vision_and_keywords(df) → (photos_df, clusters_df)  # wrapper
 ├── requirements.txt
 └── _internal/         ← implementation details (not part of public API)
     ├── clip_runtime.py
@@ -40,15 +42,21 @@ filtered = clustering.filter(df)
 # 3. Compute OpenCLIP embeddings (adds clip_vect_224 column)
 embedded = embedding.clip(filtered)
 
-# 4. DBSCAN clustering + vision scoring
-photos_out, clusters_out = clustering.vision_and_keywords(embedded)
+# 4a. DBSCAN clustering (fast, no network)
+photos_clustered, clusters_out = clustering.cluster(embedded)
+
+# 4b. Building labeling via OpenCLIP (slow, resumable via on_batch)
+photos_out = clustering.label_buildings(photos_clustered)
 
 # photos_out columns added:
-#   geo_cluster_id, vision_label, p_building, vision_reason
+#   geo_cluster_id, is_building, p_building
 #
 # clusters_out columns (matches geo_cluster table):
 #   id, min_latitude, avg_latitude, max_latitude,
 #   min_longitude, avg_longitude, max_longitude
+
+# Or in one shot (convenience wrapper):
+# photos_out, clusters_out = clustering.vision_and_keywords(embedded)
 ```
 
 ## Required DB schema additions
