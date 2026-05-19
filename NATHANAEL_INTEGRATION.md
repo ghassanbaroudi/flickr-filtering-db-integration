@@ -110,9 +110,18 @@ def flickr_photo_to_clip_embed() -> pd.DataFrame:
 
 ### 4b. `flickr_photo_to_vision_score()`
 
+<<<<<<< HEAD
 Returns photos that still need vision scoring. `NULL` means either never attempted or the
 download failed last run — both cases are retried automatically. There is no separate error
 state: failed rows simply stay `NULL` and are picked up on the next run.
+=======
+Returns photos that still need vision scoring.
+
+- `NULL` rows = never attempted → always included.
+- `'ERROR'` rows = download failed last time → **retried by default** (same behaviour as my
+  existing `vision_cache.jsonl` pipeline).
+- Pass `skip_errors=True` to leave ERROR rows alone (useful if a URL is permanently broken).
+>>>>>>> 89d2b4e075c4b66766e4e755ee5b79afd6a0862c
 
 ```python
 def flickr_photo_to_vision_score() -> pd.DataFrame:
