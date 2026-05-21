@@ -45,9 +45,9 @@ from typing import List, Optional, Sequence, Set
 
 import pandas as pd
 
-from _internal.keywords import load_keywords, apply_keyword_filter, apply_geo_filter, apply_context_filter
-from _internal.dbscan import run_dbscan, cluster_summary_df, ClusterSummary
-from _internal.clip_runtime import DEFAULT_TEXT_PROMPTS
+from flickr_filtering._internal.keywords import load_keywords, apply_keyword_filter, apply_geo_filter, apply_context_filter
+from flickr_filtering._internal.dbscan import run_dbscan, cluster_summary_df, ClusterSummary
+from flickr_filtering._internal.clip_runtime import DEFAULT_TEXT_PROMPTS
 
 # ---------------------------------------------------------------------------
 # Default settings — can be overridden via kwargs or environment variables
@@ -214,7 +214,7 @@ def label_buildings(
     _model = (model_name or os.getenv("OPENCLIP_MODEL", _DEFAULT_MODEL)).strip() or _DEFAULT_MODEL
     _pretrained = (pretrained or os.getenv("OPENCLIP_PRETRAINED", _DEFAULT_PRETRAINED)).strip() or _DEFAULT_PRETRAINED
 
-    from _internal.clip_vision import run_batched_clip, ClipVisionRuntime
+    from flickr_filtering._internal.clip_vision import run_batched_clip, ClipVisionRuntime
 
     print(f"[label_buildings] model={_model!r} pretrained={_pretrained!r} rows={len(df):,}")
 

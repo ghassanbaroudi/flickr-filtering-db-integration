@@ -6,6 +6,23 @@ are additions or fixes on your side.
 
 ---
 
+## 0. Install the package
+
+Clone / copy the `flickr-filtering` folder somewhere on your machine, then install it as an editable package **into your project's virtual environment**:
+
+```bash
+pip install -e /path/to/flickr-filtering
+```
+
+After that, imports work from anywhere on any machine without touching `sys.path`:
+
+```python
+import flickr_filtering.embedding as embedding
+import flickr_filtering.clustering as clustering
+```
+
+---
+
 ## 1. Database schema — `tables.sql`
 
 ### 1a. New columns on `machine_learning_photo`
@@ -167,11 +184,8 @@ def flickr_photo_to_cluster() -> pd.DataFrame:
 **Order matters:** label first (slow, resumable), cluster second (fast, one-shot on buildings only).
 
 ```python
-import sys
-sys.path.insert(0, "/path/to/flickr-filtering")  # adjust to actual path
-
-import embedding
-import clustering
+import flickr_filtering.embedding as embedding
+import flickr_filtering.clustering as clustering
 from src.trainer.db import (
     flickr_photo_to_clip_embed,
     flickr_photo_to_vision_score,

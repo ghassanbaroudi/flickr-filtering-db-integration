@@ -27,7 +27,7 @@ from typing import List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-from _internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
+from flickr_filtering._internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
 
 # ---------------------------------------------------------------------------
 # Default model settings — override via environment variables or function args
@@ -113,7 +113,7 @@ def clip(
     )
     print(f"[embedding.clip] model loaded on {runtime.device}, embed_dim={runtime.embed_dim}")
 
-    from _internal.clip_vision import _fetch_with_deadline
+    from flickr_filtering._internal.clip_vision import _fetch_with_deadline
 
     urls: List[str] = df[url_column].fillna("").astype(str).tolist()
     n = len(urls)

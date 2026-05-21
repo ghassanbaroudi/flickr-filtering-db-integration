@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "flickr-filtering"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "requests>=2.31",
+    "Pillow>=9.0",
+    "tqdm>=4.65",
+    "torch>=2.0",
+    "open-clip-torch>=2.24.0",
+]
+
+# The repo root (flickr-filtering/) is the package itself, importable as flickr_filtering.
+# Install with: pip install -e /path/to/flickr-filtering
+#   or from inside the folder: pip install -e .
+[tool.setuptools.package-dir]
+flickr_filtering = "."
+
+[tool.setuptools.packages]
+find = {where = ["."], include = ["_internal*"]}
