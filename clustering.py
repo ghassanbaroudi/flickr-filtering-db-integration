@@ -45,17 +45,9 @@ from typing import List, Optional, Sequence, Set
 
 import pandas as pd
 
-<<<<<<< HEAD
 from _internal.keywords import load_keywords, apply_keyword_filter, apply_geo_filter, apply_context_filter
 from _internal.dbscan import run_dbscan, cluster_summary_df, ClusterSummary
-from _internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
-from _internal.image_fetch import fetch_pil_rgb
-=======
-from ._internal.keywords import load_keywords, apply_keyword_filter, apply_geo_filter, apply_context_filter
-from ._internal.dbscan import run_dbscan, cluster_summary_df, ClusterSummary
-from ._internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
-from ._internal.image_fetch import fetch_with_deadline
->>>>>>> 99b6c4aad886b422430925aa5ab3cf81ce79dda4
+from _internal.clip_runtime import DEFAULT_TEXT_PROMPTS
 
 # ---------------------------------------------------------------------------
 # Default settings — can be overridden via kwargs or environment variables
@@ -222,80 +214,42 @@ def label_buildings(
     _model = (model_name or os.getenv("OPENCLIP_MODEL", _DEFAULT_MODEL)).strip() or _DEFAULT_MODEL
     _pretrained = (pretrained or os.getenv("OPENCLIP_PRETRAINED", _DEFAULT_PRETRAINED)).strip() or _DEFAULT_PRETRAINED
 
+    from _internal.clip_vision import run_batched_clip, ClipVisionRuntime
+
     print(f"[label_buildings] model={_model!r} pretrained={_pretrained!r} rows={len(df):,}")
 
-    runtime = ClipRuntime(
+    _runtime = ClipVisionRuntime(
         model_name=_model,
         pretrained=_pretrained,
         device=device,
-        text_prompts=text_prompts or DEFAULT_TEXT_PROMPTS,
+        text_prompts=text_prompts,
     )
-    print(f"[label_buildings] model ready on {runtime.device}")
+    print(f"[label_buildings] model ready on {_runtime.device}")
 
     urls: List[str] = df[url_column].fillna("").astype(str).tolist()
     n = len(urls)
-    bs = max(1, int(batch_size))
 
     # None = not yet scored / download failed — stays NULL in DB, retried next run.
     is_buildings: List[Optional[bool]] = [None] * n
     p_buildings: List[Optional[float]] = [None] * n
 
-    try:
-        from tqdm import tqdm
-        pbar = tqdm(total=n, desc="OpenCLIP label", unit="img") if show_progress else None
-    except ImportError:
-        pbar = None
+    def _on_result(global_idx: int, is_building: Optional[bool], p_building: Optional[float]) -> None:
+        is_buildings[global_idx] = is_building
+        p_buildings[global_idx] = p_building
+        if on_batch is not None and is_building is not None:
+            row_slice = df.iloc[[global_idx]].copy()
+            row_slice["is_building"] = [is_building]
+            row_slice["p_building"] = [p_building]
+            on_batch(row_slice)
 
-    for start in range(0, n, bs):
-        chunk_urls = urls[start: start + bs]
-        pil_images = []
-        ok_flags: List[bool] = []
-
-        for url in chunk_urls:
-            u = url.strip()
-            if not u:
-                pil_images.append(None)
-                ok_flags.append(False)
-                continue
-            try:
-                img, err = fetch_pil_rgb(u, timeout=timeout)
-                if img is None:
-                    raise RuntimeError(err or "download failed")
-                pil_images.append(img)
-                ok_flags.append(True)
-            except Exception:
-                pil_images.append(None)
-                ok_flags.append(False)
-
-        good_images = [im for im, ok in zip(pil_images, ok_flags) if ok]
-        try:
-            scored = runtime.score_images(good_images) if good_images else []
-        except Exception as exc:
-            print(f"[label_buildings] batch inference failed: {exc} — skipping batch.", flush=True)
-            scored = []
-            ok_flags = [False] * len(ok_flags)
-
-        gi = 0
-        for local_i, ok in enumerate(ok_flags):
-            global_i = start + local_i
-            if ok and gi < len(scored):
-                is_building, p0, _probs = scored[gi]
-                gi += 1
-                is_buildings[global_i] = is_building
-                p_buildings[global_i] = p0
-                # Fire on_batch immediately for every successfully scored image
-                # so progress is committed before the next download can fail/stall.
-                if on_batch is not None:
-                    row_slice = df.iloc[[global_i]].copy()
-                    row_slice["is_building"] = [is_building]
-                    row_slice["p_building"] = [p0]
-                    on_batch(row_slice)
-
-        if pbar is not None:
-            pbar.update(len(chunk_urls))
-
-    if pbar is not None:
-        pbar.close()
+    run_batched_clip(
+        urls,
+        _runtime,
+        batch_size=batch_size,
+        timeout=timeout,
+        progress=show_progress,
+        on_result=_on_result,
+    )
 
     n_yes = sum(1 for v in is_buildings if v is True)
     n_no = sum(1 for v in is_buildings if v is False)

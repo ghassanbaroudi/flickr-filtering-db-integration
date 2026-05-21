@@ -27,13 +27,7 @@ from typing import List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-<<<<<<< HEAD
 from _internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
-from _internal.image_fetch import fetch_pil_rgb
-=======
-from ._internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
-from ._internal.image_fetch import fetch_with_deadline
->>>>>>> 99b6c4aad886b422430925aa5ab3cf81ce79dda4
 
 # ---------------------------------------------------------------------------
 # Default model settings — override via environment variables or function args
@@ -119,9 +113,12 @@ def clip(
     )
     print(f"[embedding.clip] model loaded on {runtime.device}, embed_dim={runtime.embed_dim}")
 
+    from _internal.clip_vision import _fetch_with_deadline
+
     urls: List[str] = df[url_column].fillna("").astype(str).tolist()
     n = len(urls)
     bs = max(1, int(batch_size))
+    hard_timeout = timeout + 20.0
 
     vectors: List[Optional[np.ndarray]] = [None] * n
 
@@ -137,20 +134,24 @@ def clip(
         ok_flags: List[bool] = []
 
         for url in chunk_urls:
-            u = url.strip()
+            u = (url or "").strip()
             if not u:
                 pil_images.append(None)
                 ok_flags.append(False)
                 continue
-            try:
-                img, err = fetch_pil_rgb(u, timeout=timeout)
-                if img is None:
-                    raise RuntimeError(err or "download failed")
-                pil_images.append(img)
-                ok_flags.append(True)
-            except Exception:
+            img, err = _fetch_with_deadline(
+                u,
+                timeout=timeout,
+                max_retries=5,
+                base_backoff=2.0,
+                hard_timeout=hard_timeout,
+            )
+            if img is None:
                 pil_images.append(None)
                 ok_flags.append(False)
+            else:
+                pil_images.append(img)
+                ok_flags.append(True)
 
         good_images = [im for im, ok in zip(pil_images, ok_flags) if ok]
         try:
@@ -166,8 +167,6 @@ def clip(
             if ok and ei < len(embeddings):
                 vectors[global_i] = embeddings[ei]
                 ei += 1
-                # Fire on_batch immediately per image so progress is committed
-                # before the next download can fail/stall.
                 if on_batch is not None:
                     row_slice = df.iloc[[global_i]].copy()
                     row_slice["clip_vect_224"] = [vectors[global_i]]
