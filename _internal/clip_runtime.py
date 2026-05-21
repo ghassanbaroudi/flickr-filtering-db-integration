@@ -97,12 +97,13 @@ class ClipRuntime:
 
     def score_images(
         self, images: List[object]
-    ) -> List[Tuple[str, float, Tuple[float, ...]]]:
+    ) -> List[Tuple[bool, float, Tuple[float, ...]]]:
         """
         Classify each image against ``self.text_prompts`` via softmax.
 
-        Returns a list of (label, p_class0, full_probs_tuple) per image.
-        label is "YES" when argmax == 0 (building-positive), "NO" otherwise.
+        Returns a list of (is_building, p_building, full_probs_tuple) per image.
+        is_building is True when argmax == 0 (building-positive prompt), False otherwise.
+        p_building is the softmax probability for class 0.
         """
         import torch
 
@@ -119,6 +120,5 @@ class ClipRuntime:
         for row in probs:
             p0 = float(row[0])
             pred = int(row.argmax())
-            label = "YES" if pred == 0 else "NO"
-            results.append((label, p0, tuple(float(x) for x in row)))
+            results.append((pred == 0, p0, tuple(float(x) for x in row)))
         return results
