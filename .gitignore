@@ -1,0 +1,8 @@
+.venv/
+.env
+dir/
+metadata/
+metadata_combined/
+models/
+flico.egg-info/
+__pycache__
