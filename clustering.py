@@ -66,7 +66,7 @@ _DEFAULT_MAX_RETRIES = 5
 # filter()
 # ---------------------------------------------------------------------------
 
-def filter(
+def _filter(
     df: pd.DataFrame,
     *,
     keywords: Optional[List[str]] = None,
@@ -109,7 +109,12 @@ def filter(
 # cluster()
 # ---------------------------------------------------------------------------
 
-def cluster(
+def cluster(df:pd.DataFrame) -> pd.DataFrame:
+    photos, clusters = _cluster(_filter(df))
+    return photos
+
+    
+def _cluster(
     df: pd.DataFrame,
     *,
     eps_meters: float = _DEFAULT_EPS_METERS,
