@@ -45,10 +45,17 @@ from typing import List, Optional, Sequence, Set
 
 import pandas as pd
 
+<<<<<<< HEAD
 from _internal.keywords import load_keywords, apply_keyword_filter, apply_geo_filter, apply_context_filter
 from _internal.dbscan import run_dbscan, cluster_summary_df, ClusterSummary
 from _internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
 from _internal.image_fetch import fetch_pil_rgb
+=======
+from ._internal.keywords import load_keywords, apply_keyword_filter, apply_geo_filter, apply_context_filter
+from ._internal.dbscan import run_dbscan, cluster_summary_df, ClusterSummary
+from ._internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
+from ._internal.image_fetch import fetch_with_deadline
+>>>>>>> 99b6c4aad886b422430925aa5ab3cf81ce79dda4
 
 # ---------------------------------------------------------------------------
 # Default settings — can be overridden via kwargs or environment variables
@@ -112,7 +119,7 @@ def cluster(df:pd.DataFrame) -> pd.DataFrame:
     photos, clusters = _cluster(_filter(df))
     return photos
 
-    
+
 def _cluster(
     df: pd.DataFrame,
     *,

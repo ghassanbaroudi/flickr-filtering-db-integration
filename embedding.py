@@ -27,8 +27,13 @@ from typing import List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
+<<<<<<< HEAD
 from _internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
 from _internal.image_fetch import fetch_pil_rgb
+=======
+from ._internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
+from ._internal.image_fetch import fetch_with_deadline
+>>>>>>> 99b6c4aad886b422430925aa5ab3cf81ce79dda4
 
 # ---------------------------------------------------------------------------
 # Default model settings — override via environment variables or function args
