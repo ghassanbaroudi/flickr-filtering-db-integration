@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 from _internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
-from _internal.image_fetch import fetch_with_deadline
+from _internal.image_fetch import fetch_pil_rgb
 
 # ---------------------------------------------------------------------------
 # Default model settings — override via environment variables or function args
@@ -36,8 +36,7 @@ from _internal.image_fetch import fetch_with_deadline
 _DEFAULT_MODEL = "ViT-B-32"
 _DEFAULT_PRETRAINED = "laion2b_s34b_b79k"
 _DEFAULT_BATCH_SIZE = 32
-_DEFAULT_TIMEOUT = 60.0
-_DEFAULT_MAX_RETRIES = 5
+_DEFAULT_TIMEOUT = 30.0
 
 
 def clip(
@@ -48,7 +47,6 @@ def clip(
     device: Optional[str] = None,
     batch_size: int = _DEFAULT_BATCH_SIZE,
     timeout: float = _DEFAULT_TIMEOUT,
-    max_retries: int = _DEFAULT_MAX_RETRIES,
     url_column: str = "url_o",
     text_prompts: Optional[Sequence[str]] = None,
     show_progress: bool = True,
@@ -65,8 +63,7 @@ def clip(
     pretrained   : Checkpoint tag (default: env OPENCLIP_PRETRAINED or "laion2b_s34b_b79k").
     device       : "cuda" / "cpu" / None for auto.
     batch_size   : Images per GPU batch.
-    timeout      : Per-image download timeout in seconds.
-    max_retries  : Download retries before giving up.
+    timeout      : Per-image download timeout in seconds (single attempt, no retries).
     url_column   : Column containing image URLs (default "url_o" = original resolution).
     text_prompts : Not used for embedding (no text interaction), kept for API symmetry.
     show_progress: Print a tqdm progress bar.
@@ -117,7 +114,6 @@ def clip(
     )
     print(f"[embedding.clip] model loaded on {runtime.device}, embed_dim={runtime.embed_dim}")
 
-    hard_timeout = timeout + 20.0
     urls: List[str] = df[url_column].fillna("").astype(str).tolist()
     n = len(urls)
     bs = max(1, int(batch_size))
@@ -142,13 +138,7 @@ def clip(
                 ok_flags.append(False)
                 continue
             try:
-                img, err = fetch_with_deadline(
-                    u,
-                    timeout=timeout,
-                    max_retries=max_retries,
-                    base_backoff=2.0,
-                    hard_timeout=hard_timeout,
-                )
+                img, err = fetch_pil_rgb(u, timeout=timeout)
                 if img is None:
                     raise RuntimeError(err or "download failed")
                 pil_images.append(img)
@@ -166,21 +156,17 @@ def clip(
             ok_flags = [False] * len(ok_flags)
 
         ei = 0
-        successful_indices: List[int] = []
         for local_i, ok in enumerate(ok_flags):
             global_i = start + local_i
             if ok and ei < len(embeddings):
                 vectors[global_i] = embeddings[ei]
                 ei += 1
-                successful_indices.append(global_i)
-
-        # Only pass successfully embedded rows to on_batch.
-        # Failed rows stay None in `vectors` — they remain NULL in the DB and are retried next run.
-        if on_batch is not None and successful_indices:
-            batch_slice = df.iloc[successful_indices].copy()
-            batch_slice["clip_vect_224"] = [vectors[i] for i in successful_indices]
-            batch_slice["clip_error"] = [""] * len(successful_indices)
-            on_batch(batch_slice)
+                # Fire on_batch immediately per image so progress is committed
+                # before the next download can fail/stall.
+                if on_batch is not None:
+                    row_slice = df.iloc[[global_i]].copy()
+                    row_slice["clip_vect_224"] = [vectors[global_i]]
+                    on_batch(row_slice)
 
         if pbar is not None:
             pbar.update(len(chunk_urls))

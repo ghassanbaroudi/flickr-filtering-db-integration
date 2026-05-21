@@ -48,7 +48,7 @@ import pandas as pd
 from _internal.keywords import load_keywords, apply_keyword_filter, apply_geo_filter, apply_context_filter
 from _internal.dbscan import run_dbscan, cluster_summary_df, ClusterSummary
 from _internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
-from _internal.image_fetch import fetch_with_deadline
+from _internal.image_fetch import fetch_pil_rgb
 
 # ---------------------------------------------------------------------------
 # Default settings — can be overridden via kwargs or environment variables
@@ -58,8 +58,7 @@ _DEFAULT_MIN_SAMPLES = 5
 _DEFAULT_MODEL = "ViT-B-32"
 _DEFAULT_PRETRAINED = "laion2b_s34b_b79k"
 _DEFAULT_BATCH_SIZE = 32
-_DEFAULT_TIMEOUT = 60.0
-_DEFAULT_MAX_RETRIES = 5
+_DEFAULT_TIMEOUT = 30.0
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +168,6 @@ def label_buildings(
     device: Optional[str] = None,
     batch_size: int = _DEFAULT_BATCH_SIZE,
     timeout: float = _DEFAULT_TIMEOUT,
-    max_retries: int = _DEFAULT_MAX_RETRIES,
     url_column: str = "url_o",
     text_prompts: Optional[Sequence[str]] = None,
     show_progress: bool = True,
@@ -186,8 +184,7 @@ def label_buildings(
     pretrained   : Checkpoint (default: env OPENCLIP_PRETRAINED or "laion2b_s34b_b79k").
     device       : "cuda" / "cpu" / None for auto-detect.
     batch_size   : Images per GPU batch (default 32).
-    timeout      : Per-image download timeout in seconds.
-    max_retries  : Retries on 429/503 before giving up.
+    timeout      : Per-image download timeout in seconds (single attempt, no retries).
     url_column   : Column containing image URLs (default "url_o").
     text_prompts : Custom (class0_positive, *negatives) prompts. Defaults to built-in.
     show_progress: Show tqdm progress bar.
@@ -228,7 +225,6 @@ def label_buildings(
     )
     print(f"[label_buildings] model ready on {runtime.device}")
 
-    hard_timeout = timeout + 20.0
     urls: List[str] = df[url_column].fillna("").astype(str).tolist()
     n = len(urls)
     bs = max(1, int(batch_size))
@@ -255,13 +251,7 @@ def label_buildings(
                 ok_flags.append(False)
                 continue
             try:
-                img, err = fetch_with_deadline(
-                    u,
-                    timeout=timeout,
-                    max_retries=max_retries,
-                    base_backoff=2.0,
-                    hard_timeout=hard_timeout,
-                )
+                img, err = fetch_pil_rgb(u, timeout=timeout)
                 if img is None:
                     raise RuntimeError(err or "download failed")
                 pil_images.append(img)
@@ -279,7 +269,6 @@ def label_buildings(
             ok_flags = [False] * len(ok_flags)
 
         gi = 0
-        successful_indices: List[int] = []
         for local_i, ok in enumerate(ok_flags):
             global_i = start + local_i
             if ok and gi < len(scored):
@@ -287,15 +276,13 @@ def label_buildings(
                 gi += 1
                 is_buildings[global_i] = is_building
                 p_buildings[global_i] = p0
-                successful_indices.append(global_i)
-
-        # Only pass successfully scored rows to on_batch.
-        # Failed rows stay None — remain NULL in DB and are retried next run.
-        if on_batch is not None and successful_indices:
-            batch_slice = df.iloc[successful_indices].copy()
-            batch_slice["is_building"] = [is_buildings[i] for i in successful_indices]
-            batch_slice["p_building"] = [p_buildings[i] for i in successful_indices]
-            on_batch(batch_slice)
+                # Fire on_batch immediately for every successfully scored image
+                # so progress is committed before the next download can fail/stall.
+                if on_batch is not None:
+                    row_slice = df.iloc[[global_i]].copy()
+                    row_slice["is_building"] = [is_building]
+                    row_slice["p_building"] = [p0]
+                    on_batch(row_slice)
 
         if pbar is not None:
             pbar.update(len(chunk_urls))
@@ -328,7 +315,6 @@ def vision_and_keywords(
     device: Optional[str] = None,
     batch_size: int = _DEFAULT_BATCH_SIZE,
     timeout: float = _DEFAULT_TIMEOUT,
-    max_retries: int = _DEFAULT_MAX_RETRIES,
     url_column: str = "url_o",
     text_prompts: Optional[Sequence[str]] = None,
     show_progress: bool = True,
@@ -350,7 +336,6 @@ def vision_and_keywords(
         device=device,
         batch_size=batch_size,
         timeout=timeout,
-        max_retries=max_retries,
         url_column=url_column,
         text_prompts=text_prompts,
         show_progress=show_progress,

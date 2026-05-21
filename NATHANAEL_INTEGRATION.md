@@ -110,18 +110,9 @@ def flickr_photo_to_clip_embed() -> pd.DataFrame:
 
 ### 4b. `flickr_photo_to_vision_score()`
 
-<<<<<<< HEAD
 Returns photos that still need vision scoring. `NULL` means either never attempted or the
 download failed last run — both cases are retried automatically. There is no separate error
 state: failed rows simply stay `NULL` and are picked up on the next run.
-=======
-Returns photos that still need vision scoring.
-
-- `NULL` rows = never attempted → always included.
-- `'ERROR'` rows = download failed last time → **retried by default** (same behaviour as my
-  existing `vision_cache.jsonl` pipeline).
-- Pass `skip_errors=True` to leave ERROR rows alone (useful if a URL is permanently broken).
->>>>>>> 89d2b4e075c4b66766e4e755ee5b79afd6a0862c
 
 ```python
 def flickr_photo_to_vision_score() -> pd.DataFrame:
@@ -141,23 +132,25 @@ def flickr_photo_to_vision_score() -> pd.DataFrame:
     return df.loc[:, ~df.columns.duplicated()]
 ```
 
-### 4c. `flickr_photo_to_dbscan()`
+### 4c. `flickr_photo_to_cluster()`
 
-Returns photos that need DBSCAN clustering (geo-valid, not yet assigned a cluster).
-DBSCAN must receive **all unprocessed rows at once** — not in chunks — because it needs
-the full point cloud to produce consistent cluster IDs.
+Returns confirmed building photos that have not yet been assigned a cluster.
+**Run only after `label_buildings` is complete** — clustering groups buildings that
+are geographically close, so it only makes sense on rows where `is_building = TRUE`.
+DBSCAN must receive all unprocessed rows at once (not resumable).
 
 ```python
-def flickr_photo_to_dbscan() -> pd.DataFrame:
+def flickr_photo_to_cluster() -> pd.DataFrame:
     """
-    Photos that need geospatial clustering.
-    Must be called once for the full unprocessed set — DBSCAN is not resumable.
+    Confirmed building photos that still need a geo_cluster_id.
+    Only call once label_buildings is complete for the full dataset.
     """
     query = text("""--sql
         SELECT * FROM photo AS P
         JOIN machine_learning_photo AS MLP
         ON P.owner_nsid = MLP.owner_nsid AND P.id = MLP.id
-        WHERE MLP.geo_cluster_id IS NULL
+        WHERE MLP.is_building = TRUE
+        AND MLP.geo_cluster_id IS NULL
         AND P.latitude IS NOT NULL
         AND P.longitude IS NOT NULL
         AND P.latitude  != 0
@@ -171,9 +164,7 @@ def flickr_photo_to_dbscan() -> pd.DataFrame:
 
 ## 5. How to call the pipeline (orchestration example)
 
-Place this in your trainer script or notebook. The `on_batch` callbacks ensure that
-results are committed to the DB after every batch, so a crash or Flickr rate-limit
-loses **at most one batch** (default 32 images).
+**Order matters:** label first (slow, resumable), cluster second (fast, one-shot on buildings only).
 
 ```python
 import sys
@@ -183,14 +174,15 @@ import embedding
 import clustering
 from src.trainer.db import (
     flickr_photo_to_clip_embed,
-    flickr_photo_to_dbscan,
     flickr_photo_to_vision_score,
+    flickr_photo_to_cluster,
     save_clusters,
     update_ml_photo,
 )
 
 # ── Step 1: OpenCLIP embeddings ──────────────────────────────────────────────
-# Re-run freely; only rows with clip_vect_224 IS NULL are fetched.
+# Re-run freely. Each successfully embedded image is committed immediately.
+# Rate-limited / failed rows stay NULL and are retried on next run.
 
 def _on_clip_batch(batch_df):
     update_ml_photo(batch_df, 'clip_vect_224')
@@ -199,23 +191,10 @@ df_to_embed = flickr_photo_to_clip_embed()
 if not df_to_embed.empty:
     embedding.clip(df_to_embed, on_batch=_on_clip_batch)
 
-# ── Step 2: DBSCAN clustering ────────────────────────────────────────────────
-# Run once on all unprocessed rows. Fast — no network I/O.
-# Write clusters first (FK constraint: geo_cluster_id references geo_cluster.id).
-
-df_to_cluster = flickr_photo_to_dbscan()
-if not df_to_cluster.empty:
-    photos_clustered, clusters_df = clustering.cluster(df_to_cluster)
-    save_clusters(clusters_df)
-    update_ml_photo(
-        photos_clustered[['owner_nsid', 'id', 'geo_cluster_id']],
-        'geo_cluster_id',
-    )
-
-# ── Step 3: Building labeling ─────────────────────────────────────────────────
-# Re-run freely; NULL rows (never scored or failed last run) are retried automatically.
-# Each successful batch is committed immediately via on_batch — safe to interrupt at any time.
-# Failed downloads are silently skipped and stay NULL in the DB for the next run.
+# ── Step 2: Building labeling ─────────────────────────────────────────────────
+# Re-run freely until complete. Each successfully scored image is committed immediately.
+# On 429 rate-limit, the download returns None instantly (no sleeping/blocking).
+# Re-run after a cooldown — only NULL rows are fetched each time.
 
 def _on_vision_batch(batch_df):
     update_ml_photo(batch_df, 'is_building')
@@ -224,6 +203,19 @@ def _on_vision_batch(batch_df):
 df_to_score = flickr_photo_to_vision_score()
 if not df_to_score.empty:
     clustering.label_buildings(df_to_score, on_batch=_on_vision_batch)
+
+# ── Step 3: DBSCAN clustering ─────────────────────────────────────────────────
+# Run ONCE after labeling is complete, on confirmed buildings only (is_building = TRUE).
+# Fast — no network I/O. Write cluster rows first (FK constraint).
+
+df_to_cluster = flickr_photo_to_cluster()
+if not df_to_cluster.empty:
+    photos_clustered, clusters_df = clustering.cluster(df_to_cluster)
+    save_clusters(clusters_df)
+    update_ml_photo(
+        photos_clustered[['owner_nsid', 'id', 'geo_cluster_id']],
+        'geo_cluster_id',
+    )
 ```
 
 > `cluster()` and `label_buildings()` are fully independent and can be called separately.
@@ -240,4 +232,4 @@ if not df_to_score.empty:
 | `src/trainer/db.py` | Bug fix | Typo `_psql_insert_signore` → `_psql_insert_ignore` in `save_clusters` |
 | `src/trainer/db.py` | Code addition | New function `flickr_photo_to_clip_embed()` |
 | `src/trainer/db.py` | Code addition | New function `flickr_photo_to_vision_score()` |
-| `src/trainer/db.py` | Code addition | New function `flickr_photo_to_dbscan()` |
+| `src/trainer/db.py` | Code addition | New function `flickr_photo_to_cluster()` |
