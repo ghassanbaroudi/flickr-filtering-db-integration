@@ -27,7 +27,7 @@ from typing import List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-from _internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
+from ._internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
 
 # ---------------------------------------------------------------------------
 # Default model settings — override via environment variables or function args

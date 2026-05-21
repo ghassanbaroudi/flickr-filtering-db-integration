@@ -45,9 +45,9 @@ from typing import List, Optional, Sequence, Set
 
 import pandas as pd
 
-from _internal.keywords import load_keywords, apply_keyword_filter, apply_geo_filter, apply_context_filter
-from _internal.dbscan import run_dbscan, cluster_summary_df, ClusterSummary
-from _internal.clip_runtime import DEFAULT_TEXT_PROMPTS
+from ._internal.keywords import load_keywords, apply_keyword_filter, apply_geo_filter, apply_context_filter
+from ._internal.dbscan import run_dbscan, cluster_summary_df, ClusterSummary
+from ._internal.clip_runtime import DEFAULT_TEXT_PROMPTS
 
 # ---------------------------------------------------------------------------
 # Default settings — can be overridden via kwargs or environment variables
