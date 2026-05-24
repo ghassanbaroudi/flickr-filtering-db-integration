@@ -41,6 +41,7 @@ _DEFAULT_TIMEOUT = 30.0
 
 def clip(
     df: pd.DataFrame,
+    cache,
     *,
     model_name: str = "",
     pretrained: str = "",
@@ -139,13 +140,14 @@ def clip(
                 pil_images.append(None)
                 ok_flags.append(False)
                 continue
-            img, err = _fetch_with_deadline(
-                u,
-                timeout=timeout,
-                max_retries=5,
-                base_backoff=2.0,
-                hard_timeout=hard_timeout,
-            )
+            # img, err = _fetch_with_deadline(
+            #     u,
+            #     timeout=timeout,
+            #     max_retries=5,
+            #     base_backoff=2.0,
+            #     hard_timeout=hard_timeout,
+            # )
+            img = cache.get(url)
             if img is None:
                 pil_images.append(None)
                 ok_flags.append(False)

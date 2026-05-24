@@ -162,6 +162,7 @@ def _cluster(
 
 def label_buildings(
     df: pd.DataFrame,
+    cache,
     *,
     model_name: str = "",
     pretrained: str = "",
@@ -244,6 +245,7 @@ def label_buildings(
 
     run_batched_clip(
         urls,
+        cache,
         _runtime,
         batch_size=batch_size,
         timeout=timeout,
