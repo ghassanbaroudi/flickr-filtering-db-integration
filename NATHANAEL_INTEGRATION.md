@@ -205,18 +205,30 @@ df_to_embed = flickr_photo_to_clip_embed()
 if not df_to_embed.empty:
     embedding.clip(df_to_embed, on_batch=_on_clip_batch)
 
-# ── Step 2: Building labeling ─────────────────────────────────────────────────
+# ── Step 2: Keyword + geo pre-filter ─────────────────────────────────────────
+# CRITICAL: must run before label_buildings. This is what makes our results match.
+# Keeps only rows with valid geo AND at least one building keyword in title/description/tags.
+# Without this step, non-building photos enter the vision scorer and pollute the clusters.
+#
+# The url_column must match whatever column name holds the original image URL in your DB.
+# In our pipeline it is "image_url" — check your photo table and pass the right name.
+
+df_to_score = flickr_photo_to_vision_score()  # WHERE is_building IS NULL
+if not df_to_score.empty:
+    df_to_score = clustering._filter(df_to_score)  # geo + keyword filter
+
+# ── Step 3: Building labeling ─────────────────────────────────────────────────
 # Re-run freely until complete. Each successfully scored image is committed immediately.
 # On 429 rate-limit, the download returns None instantly (no sleeping/blocking).
 # Re-run after a cooldown — only NULL rows are fetched each time.
+# ⚠ url_column: change "url_o" to whatever your photo table calls the image URL column.
 
 def _on_vision_batch(batch_df):
     update_ml_photo(batch_df, 'is_building')
     update_ml_photo(batch_df, 'p_building')
 
-df_to_score = flickr_photo_to_vision_score()
 if not df_to_score.empty:
-    clustering.label_buildings(df_to_score, on_batch=_on_vision_batch)
+    clustering.label_buildings(df_to_score, url_column="url_o", on_batch=_on_vision_batch)
 
 # ── Step 3: DBSCAN clustering ─────────────────────────────────────────────────
 # Run ONCE after labeling is complete, on confirmed buildings only (is_building = TRUE).
