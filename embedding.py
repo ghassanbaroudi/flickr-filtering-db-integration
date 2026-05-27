@@ -27,7 +27,8 @@ from typing import List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-from flickr_filtering._internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
+from ._internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
+from ._internal.clip_vision import _fetch_with_deadline
 
 # ---------------------------------------------------------------------------
 # Default model settings — override via environment variables or function args
@@ -40,6 +41,7 @@ _DEFAULT_TIMEOUT = 30.0
 
 def clip(
     df: pd.DataFrame,
+    cache,
     *,
     model_name: str = "",
     pretrained: str = "",
@@ -113,7 +115,6 @@ def clip(
     )
     print(f"[embedding.clip] model loaded on {runtime.device}, embed_dim={runtime.embed_dim}")
 
-    from flickr_filtering._internal.clip_vision import _fetch_with_deadline
 
     urls: List[str] = df[url_column].fillna("").astype(str).tolist()
     n = len(urls)
@@ -139,13 +140,14 @@ def clip(
                 pil_images.append(None)
                 ok_flags.append(False)
                 continue
-            img, err = _fetch_with_deadline(
-                u,
-                timeout=timeout,
-                max_retries=5,
-                base_backoff=2.0,
-                hard_timeout=hard_timeout,
-            )
+            # img, err = _fetch_with_deadline(
+            #     u,
+            #     timeout=timeout,
+            #     max_retries=5,
+            #     base_backoff=2.0,
+            #     hard_timeout=hard_timeout,
+            # )
+            img = cache.get(url)
             if img is None:
                 pil_images.append(None)
                 ok_flags.append(False)

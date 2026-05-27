@@ -209,6 +209,7 @@ class ClipVisionRuntime:
 
 def run_batched_clip(
     urls: Sequence[str],
+    cache,
     runtime: ClipVisionRuntime,
     *,
     batch_size: int,
@@ -272,13 +273,14 @@ def run_batched_clip(
                 ok_mask.append(False)
                 dl_errors.append("missing image_url")
                 continue
-            img, err = _fetch_with_deadline(
-                u,
-                timeout=timeout,
-                max_retries=max_retries,
-                base_backoff=base_backoff,
-                hard_timeout=hard_timeout_per_url,
-            )
+            # img, err = _fetch_with_deadline(
+            #     u,
+            #     timeout=timeout,
+            #     max_retries=max_retries,
+            #     base_backoff=base_backoff,
+            #     hard_timeout=hard_timeout_per_url,
+            # )
+            img = cache.get(url)
             if img is None:
                 pil_list.append(None)
                 ok_mask.append(False)
