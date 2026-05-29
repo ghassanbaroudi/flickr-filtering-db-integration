@@ -14,12 +14,11 @@ import numpy as np
 
 # Default building-positive / negative prompts (can be overridden at runtime init).
 DEFAULT_TEXT_PROMPTS: Tuple[str, ...] = (
-    "a photograph taken outdoors showing the real exterior facade of a built structure "
-    "with walls windows or roof visible in the scene",
-    "a close-up photograph of paper pages documents blueprints floor plans maps letters "
-    "newspapers books or archival sheets with printed text or diagrams",
-    "a photograph of a computer screen tablet projector slide framed poster or museum label "
-    "displaying an image or drawing of a building",
+    "a photo of a building, architecture, monument, church, cathedral, temple, mosque, castle, palace, museum, bridge, tower, facade, ruin, skyline, or street with buildings or architectural structures clearly visible",
+    "a close-up photo of paper documents, blueprints, floor plans, maps, books, newspapers, or printed pages filling the frame with text and diagrams",
+    "a photo of a computer monitor, phone screen, tablet, projector slide, or framed print showing a picture of something else",
+    "a close-up portrait or selfie where a person's face fills most of the photograph and no building or architecture is visible",
+    "a photo of open water, boats, vehicles, forests, fields, mountains, or sky as the only subject with no building or man-made structure in view",
 )
 
 

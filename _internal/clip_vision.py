@@ -32,21 +32,13 @@ _PIL_MAX_PIXELS = 300_000_000  # ~300 MP
 _pil_bomb_limit_applied = False
 
 
-# Two prompts: index 0 = building-positive, index 1 = non-building / wrong subject
+# Index 0 = building-positive (keep). All others = negatives.
 CLIP_TEXT_PROMPTS = (
-        "a photograph taken outdoors showing the real exterior facade of a built structure with walls windows or roof visible in the scene",
-    # 1 — documents (already there)
-    "a close-up photograph of paper pages documents blueprints floor plans maps letters newspapers books or archival sheets with printed text or diagrams",
-    # 2 — screen/poster (already there)
-    "a photograph of a computer screen tablet projector slide framed poster or museum label displaying an image or drawing of a building",
-    # 3 — NEW: people dominating the scene
-    "a photograph of people or a crowd where faces or bodies are the main subject and any building in the background is minor or unclear",
-    # 4 — NEW: indoor interior
-    "a photograph taken indoors showing the interior of a room hallway lobby or space with furniture floors or ceilings visible",
-    # 5 — NEW: boats and water
-    "a photograph of a boat ship vessel or watercraft on water with no building as the main subject",
-    # 6 — NEW: nature / landscape with no building
-    "a photograph of nature trees fields mountains water or sky with no man-made structure visible as the main subject",
+    "a photo of a building, architecture, monument, church, cathedral, temple, mosque, castle, palace, museum, bridge, tower, facade, ruin, skyline, or street with buildings or architectural structures clearly visible",
+    "a close-up photo of paper documents, blueprints, floor plans, maps, books, newspapers, or printed pages filling the frame with text and diagrams",
+    "a photo of a computer monitor, phone screen, tablet, projector slide, or framed print showing a picture of something else",
+    "a close-up portrait or selfie where a person's face fills most of the photograph and no building or architecture is visible",
+    "a photo of open water, boats, vehicles, forests, fields, mountains, or sky as the only subject with no building or man-made structure in view",
 )
 
 
