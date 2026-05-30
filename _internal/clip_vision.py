@@ -12,8 +12,6 @@ from typing import List, Optional, Sequence, Tuple
 
 import requests
 
-# Lazy imports for torch/open_clip in ClipVisionRuntime.__init__
-
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -26,13 +24,10 @@ _FETCH_HEADERS = {
     "Referer": "https://www.flickr.com/",
 }
 
-# Pillow refuses images above a default pixel count (decompression-bomb guard).  High-res
-# Flickr JPEGs often exceed it; CLIP resizes anyway — use a generous but finite cap.
-_PIL_MAX_PIXELS = 300_000_000  # ~300 MP
+_PIL_MAX_PIXELS = 300_000_000
 _pil_bomb_limit_applied = False
 
 
-# Index 0 = building-positive (keep). All others = negatives.
 CLIP_TEXT_PROMPTS = (
     "a photo of a building, architecture, monument, church, cathedral, temple, mosque, castle, palace, museum, bridge, tower, facade, ruin, skyline, or street with buildings or architectural structures clearly visible",
     "a close-up photo of paper documents, blueprints, floor plans, maps, books, newspapers, or printed pages filling the frame with text and diagrams",
@@ -182,7 +177,6 @@ class ClipVisionRuntime:
 
         if not texts:
             return []
-        # Avoid empty strings breaking tokenizers; single space is effectively "no signal".
         cleaned = [(t or "").strip() if (t or "").strip() else " " for t in texts]
         tokens = self._tokenizer(cleaned).to(self.device)
         with torch.no_grad():
@@ -245,8 +239,6 @@ def run_batched_clip(
     except ImportError:
         tqdm = None  # type: ignore
 
-    # Hard per-URL wall-clock deadline — kills requests that hang indefinitely
-    # because the socket timeout never fires (trickle servers, corrupt PIL decode).
     hard_timeout_per_url = timeout + 20.0
 
     results: List[Tuple[Optional[bool], Optional[float]]] = []
@@ -275,13 +267,6 @@ def run_batched_clip(
                 ok_mask.append(False)
                 dl_errors.append("missing image_url")
                 continue
-            # img, err = _fetch_with_deadline(
-            #     u,
-            #     timeout=timeout,
-            #     max_retries=max_retries,
-            #     base_backoff=base_backoff,
-            #     hard_timeout=hard_timeout_per_url,
-            # )
             img = cache.get(url)
             if img is None:
                 pil_list.append(None)

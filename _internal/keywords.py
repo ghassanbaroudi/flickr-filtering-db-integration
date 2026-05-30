@@ -9,10 +9,6 @@ from typing import List, Optional, Set
 
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# Default keyword list (substring match, case-insensitive).
-# Can be overridden by passing a custom list to filter().
-# ---------------------------------------------------------------------------
 DEFAULT_BUILDING_KEYWORDS: List[str] = [
     "building",
     "architecture",

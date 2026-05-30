@@ -12,7 +12,6 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-# Default building-positive / negative prompts (can be overridden at runtime init).
 DEFAULT_TEXT_PROMPTS: Tuple[str, ...] = (
     "a photo of a building, architecture, monument, church, cathedral, temple, mosque, castle, palace, museum, bridge, tower, facade, ruin, skyline, or street with buildings or architectural structures clearly visible",
     "a close-up photo of paper documents, blueprints, floor plans, maps, books, newspapers, or printed pages filling the frame with text and diagrams",
@@ -67,11 +66,7 @@ class ClipRuntime:
             self.text_features = tf / tf.norm(dim=-1, keepdim=True)
         self._logit_scale = self.model.logit_scale.exp()
 
-        self.embed_dim: int = self.model.visual.output_dim  # 512 for ViT-B-32
-
-    # ------------------------------------------------------------------
-    # Embedding
-    # ------------------------------------------------------------------
+        self.embed_dim: int = self.model.visual.output_dim
 
     def embed_images(self, images: List[object]) -> List[np.ndarray]:
         """
@@ -89,10 +84,6 @@ class ClipRuntime:
             feat = self.model.encode_image(tensors)
             feat = feat / feat.norm(dim=-1, keepdim=True)
         return [arr.astype(np.float32) for arr in feat.cpu().numpy()]
-
-    # ------------------------------------------------------------------
-    # Vision scoring (softmax over text prompts)
-    # ------------------------------------------------------------------
 
     def score_images(
         self, images: List[object]

@@ -50,9 +50,6 @@ from ._internal.dbscan import run_dbscan, cluster_summary_df, ClusterSummary
 from ._internal.clip_runtime import DEFAULT_TEXT_PROMPTS
 from ._internal.clip_vision import run_batched_clip, ClipVisionRuntime
 
-# ---------------------------------------------------------------------------
-# Default settings — can be overridden via kwargs or environment variables
-# ---------------------------------------------------------------------------
 _DEFAULT_EPS_METERS = 50.0
 _DEFAULT_MIN_SAMPLES = 5
 _DEFAULT_MODEL = "ViT-B-32"
@@ -60,10 +57,6 @@ _DEFAULT_PRETRAINED = "laion2b_s34b_b79k"
 _DEFAULT_BATCH_SIZE = 32
 _DEFAULT_TIMEOUT = 30.0
 
-
-# ---------------------------------------------------------------------------
-# filter()
-# ---------------------------------------------------------------------------
 
 def _filter(
     df: pd.DataFrame,
@@ -103,10 +96,6 @@ def _filter(
         print(f"[filter] Final: {len(df_kw):,} rows after geo + keyword + context filter.")
     return df_kw
 
-
-# ---------------------------------------------------------------------------
-# cluster()
-# ---------------------------------------------------------------------------
 
 def cluster(df:pd.DataFrame) -> pd.DataFrame:
     photos, clusters = _cluster(_filter(df))
@@ -155,10 +144,6 @@ def _cluster(
     clusters_df = cluster_summary_df(summary)
     return clustered_df, clusters_df
 
-
-# ---------------------------------------------------------------------------
-# label_buildings()
-# ---------------------------------------------------------------------------
 
 def label_buildings(
     df: pd.DataFrame,
@@ -230,7 +215,6 @@ def label_buildings(
     urls: List[str] = df[url_column].fillna("").astype(str).tolist()
     n = len(urls)
 
-    # None = not yet scored / download failed — stays NULL in DB, retried next run.
     is_buildings: List[Optional[bool]] = [None] * n
     p_buildings: List[Optional[float]] = [None] * n
 
@@ -263,10 +247,6 @@ def label_buildings(
     out["p_building"] = p_buildings
     return out
 
-
-# ---------------------------------------------------------------------------
-# vision_and_keywords() — backwards-compatible wrapper
-# ---------------------------------------------------------------------------
 
 def vision_and_keywords(
     df: pd.DataFrame,
@@ -307,7 +287,4 @@ def vision_and_keywords(
     return labeled_df, clusters_df
 
 
-# ---------------------------------------------------------------------------
-# Convenience re-export so callers can import cluster_summary_df from here
-# ---------------------------------------------------------------------------
 __all__ = ["filter", "cluster", "label_buildings", "vision_and_keywords", "cluster_summary_df"]

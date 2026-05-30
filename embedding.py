@@ -30,9 +30,6 @@ import pandas as pd
 from ._internal.clip_runtime import ClipRuntime, DEFAULT_TEXT_PROMPTS
 from ._internal.clip_vision import _fetch_with_deadline
 
-# ---------------------------------------------------------------------------
-# Default model settings — override via environment variables or function args
-# ---------------------------------------------------------------------------
 _DEFAULT_MODEL = "ViT-B-32"
 _DEFAULT_PRETRAINED = "laion2b_s34b_b79k"
 _DEFAULT_BATCH_SIZE = 32
@@ -140,13 +137,6 @@ def clip(
                 pil_images.append(None)
                 ok_flags.append(False)
                 continue
-            # img, err = _fetch_with_deadline(
-            #     u,
-            #     timeout=timeout,
-            #     max_retries=5,
-            #     base_backoff=2.0,
-            #     hard_timeout=hard_timeout,
-            # )
             img = cache.get(url)
             if img is None:
                 pil_images.append(None)
@@ -185,5 +175,5 @@ def clip(
     print(f"[embedding.clip] done: {n_ok:,} embedded, {n_pending:,} failed (will retry next run).")
 
     out = df.copy()
-    out["clip_vect_224"] = vectors  # None for failed rows — stays NULL in DB
+    out["clip_vect_224"] = vectors
     return out

@@ -25,7 +25,6 @@ _FETCH_HEADERS = {
     "Referer": "https://www.flickr.com/",
 }
 
-# Pillow decompression-bomb guard — CLIP resizes anyway, so a generous cap is fine.
 _PIL_MAX_PIXELS = 300_000_000
 _pil_limit_applied = False
 
